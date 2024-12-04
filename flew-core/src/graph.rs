@@ -1,74 +1,62 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use crate::node;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Node<T> {
-    pub id: String,
-    pub data: T,
-}
 pub trait Graph<T> {
-    fn item(&self, id: &str) -> Option<Vec<Node<T>>>;
-    fn add_node(&mut self, id: String, node: Vec<Node<T>>) -> String;
+    fn add_node(&mut self, node_name: String) -> String;
+    fn remove_node(&mut self, node_name: &str);
+    fn get_node(&self, node_name: &str) -> Vec<T>;
     fn add_edge(&mut self, source: &str, target: &str);
-    fn remove_node(&mut self, id: &str);
     fn remove_edge(&mut self, source: &str, target: &str);
 }
 
-impl<T> Node<T> {
-    pub fn new(data: T) -> Self {
-        let id = Uuid::new_v4().to_string();
-        Node { id, data }
-    }
-
-    pub fn new_with_id(id: String, data: T) -> Self {
-        Node { id, data }
-    }
-}
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Flew<T> {
-    nodes: Option<HashMap<String, Vec<Node<T>>>>,
-    edges: Option<HashMap<String, HashSet<String>>>,
-    node_name: String,
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Collection<T> {
+    pub nodes: HashMap<String, Vec<T>>,
+    pub edges: HashMap<String, HashSet<String>>,
 }
 
-impl<T> Flew<T> {
-    pub fn new(node_name: String) -> Self {
-        Flew {
-            nodes: None,
-            edges: None,
-            node_name,
-        }
+impl<T> Collection<T> {
+    pub fn from(nodes: HashMap<String, Vec<T>>, edges: HashMap<String, HashSet<String>>) -> Self {
+        Collection { nodes, edges }
     }
 }
 
-impl<T> Graph<T> for Flew<T>
+impl<T> Graph<T> for Collection<T>
 where
-    T: Clone,
+    T: Clone + for<'de> Deserialize<'de> + Serialize,
 {
-    fn add_edge(&mut self, source: &str, target: &str) {
-        todo!()
+    fn add_node(&mut self, node_name: String) -> String {
+        self.nodes.insert(node_name.clone(), Vec::new());
+        node_name
     }
 
-    fn remove_node(&mut self, id: &str) {
-        todo!()
+    fn remove_node(&mut self, node_name: &str) {
+        self.nodes.remove(node_name);
+    }
+
+    fn add_edge(&mut self, source: &str, target: &str) {
+        if !self.nodes.contains_key(source) || !self.nodes.contains_key(target) {
+            return;
+        }
+
+        if !self.edges.contains_key(source) {
+            self.edges.insert(source.to_string(), HashSet::new());
+        }
+        self.edges
+            .get_mut(source)
+            .unwrap()
+            .insert(target.to_string());
     }
 
     fn remove_edge(&mut self, source: &str, target: &str) {
-        todo!()
-    }
-
-    fn item(&self, id: &str) -> Option<Vec<Node<T>>> {
-        match Some(self.nodes.clone()) {
-            None => self.nodes.as_ref().unwrap().get(&self.node_name).cloned(),
-            Some(nodes) => nodes.unwrap().get(&self.node_name).cloned(),
+        if !self.edges.contains_key(source) {
+            return;
         }
+        self.edges.get_mut(source).unwrap().remove(target);
     }
 
-    fn add_node(&mut self, id: String, node: Vec<Node<T>>) -> String {
-        todo!()
+    fn get_node(&self, node_name: &str) -> Vec<T> {
+        self.nodes.get(node_name).cloned().unwrap_or_else(Vec::new)
     }
 }

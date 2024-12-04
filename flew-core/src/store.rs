@@ -7,9 +7,13 @@ use std::{
 use bincode::deserialize;
 use serde::{Deserialize, Serialize};
 
+use crate::{graph::Collection, node::DataNode};
+
 pub trait Store<T> {
-    fn save(&self, data: T);
-    fn load(&self) -> T;
+    fn save(&self, data: Collection<T>);
+    fn load<U>(&self) -> Collection<U>
+    where
+        U: Serialize + for<'a> Deserialize<'a>;
 }
 
 pub struct BinaryStore {
@@ -28,24 +32,27 @@ impl<T> Store<T> for BinaryStore
 where
     T: Serialize + for<'a> Deserialize<'a>,
 {
-    fn save(&self, data: T) {
+    fn save(&self, _data: Collection<T>) {
         let existing_data = if Path::new(&self.path).exists() {
             let json = fs::read_to_string(&self.path).expect("failed to read");
-            serde_json::from_str::<Vec<T>>(&json).unwrap_or_else(|_| Vec::new())
+            serde_json::from_str::<Vec<DataNode<T>>>(&json).unwrap_or_else(|_| Vec::new())
         // Deserialize or create empty Vec if file is empty
         } else {
             Vec::new() // If the file doesn't exist, create a new Vec
         };
 
         // Append the new data
-        let mut updated_data = existing_data;
-        updated_data.push(data);
+        let updated_data = existing_data;
+        // updated_data.extend(data.nodes);
 
         // Serialize the updated data and write it back to the file
         let json = serde_json::to_string(&updated_data).expect("failed to serialize");
         let _ = fs::write(&self.path, json);
     }
-    fn load(&self) -> T {
+    fn load<U>(&self) -> Collection<U>
+    where
+        U: Serialize + for<'a> Deserialize<'a>,
+    {
         let mut file = File::open(self.path.clone()).expect("Failed to open file");
         let mut buff = Vec::new();
         file.read_to_end(&mut buff).expect("failed to read");
@@ -56,6 +63,7 @@ where
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonStore {
     path: String,
 }
@@ -72,12 +80,17 @@ impl<T> Store<T> for JsonStore
 where
     T: Serialize + for<'a> Deserialize<'a>,
 {
-    fn save(&self, data: T) {
+    fn save(&self, data: Collection<T>) {
         let json = serde_json::to_string(&data).expect("failed to serialize");
         std::fs::write(self.path.clone(), json).expect("failed to write");
     }
-    fn load(&self) -> T {
+
+    fn load<U>(&self) -> Collection<U>
+    where
+        U: Serialize + for<'a> Deserialize<'a>,
+    {
         let json = std::fs::read_to_string(self.path.clone()).expect("failed to read");
+
         serde_json::from_str(&json).expect("failed to deserialize")
     }
 }
