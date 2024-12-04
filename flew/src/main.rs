@@ -1,8 +1,8 @@
 use flew_core::{
     flew::{EmbeddedFlew, Flew},
-    graph::{Collection, Graph},
+    graph::Graph,
     node::DataNode,
-    store::JsonStore,
+    store::BinaryStore,
 };
 use flew_macros::{flew_main, Entity};
 use serde::{Deserialize, Serialize};
@@ -21,14 +21,18 @@ struct Post {
 
 #[flew_main]
 fn main() {
-    let store = JsonStore::new("graph.json");
-    let flew = EmbeddedFlew::new(store.clone());
-    let data: Collection<DataNode<Entity>> = flew.node();
-    let mut users = data.get_node("users");
-    let user = User {
-        name: "John Doe".to_string(),
-        age: 30,
+    let store = BinaryStore::new("graph.bin");
+    let db = EmbeddedFlew::new(store.clone());
+    let mut collection = db.collection();
+    collection.add_node("posts".to_string());
+    let post = Post {
+        title: "Hello, world!".to_string(),
+        body: "This is a test post.".to_string(),
     };
-    users.push(DataNode::new(Entity::User(user)));
-    println!("Data: {:#?}", data);
+    let post_node = DataNode::new(Entity::Post(post));
+    if let Some(posts) = collection.get_node_mut("posts") {
+        posts.push(post_node);
+    }
+    println!("Data: {:#?}", collection);
+    db.sync(collection);
 }

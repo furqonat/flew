@@ -4,18 +4,21 @@ use std::{
     path::Path,
 };
 
-use bincode::deserialize;
+use bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 
-use crate::{graph::Collection, node::DataNode};
+use crate::graph::Collection;
 
 pub trait Store<T> {
-    fn save(&self, data: Collection<T>);
-    fn load<U>(&self) -> Collection<U>
+    fn write<U>(&self, data: Collection<U>) -> Result<(), String>
+    where
+        U: Serialize + for<'a> Deserialize<'a>;
+    fn read<U>(&self) -> Result<Collection<U>, String>
     where
         U: Serialize + for<'a> Deserialize<'a>;
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryStore {
     path: String,
 }
@@ -26,40 +29,52 @@ impl BinaryStore {
             path: path.to_string(),
         }
     }
+
+    fn ensure_file_exists(&self) -> Result<(), String> {
+        let path = Path::new(&self.path);
+        if !path.exists() {
+            File::create(&self.path).map_err(|e| format!("Failed to create file: {}", e))?;
+        }
+        Ok(())
+    }
 }
 
 impl<T> Store<T> for BinaryStore
 where
     T: Serialize + for<'a> Deserialize<'a>,
 {
-    fn save(&self, _data: Collection<T>) {
-        let existing_data = if Path::new(&self.path).exists() {
-            let json = fs::read_to_string(&self.path).expect("failed to read");
-            serde_json::from_str::<Vec<DataNode<T>>>(&json).unwrap_or_else(|_| Vec::new())
-        // Deserialize or create empty Vec if file is empty
-        } else {
-            Vec::new() // If the file doesn't exist, create a new Vec
-        };
-
-        // Append the new data
-        let updated_data = existing_data;
-        // updated_data.extend(data.nodes);
-
-        // Serialize the updated data and write it back to the file
-        let json = serde_json::to_string(&updated_data).expect("failed to serialize");
-        let _ = fs::write(&self.path, json);
-    }
-    fn load<U>(&self) -> Collection<U>
+    fn write<U>(&self, data: Collection<U>) -> Result<(), String>
     where
         U: Serialize + for<'a> Deserialize<'a>,
     {
-        let mut file = File::open(self.path.clone()).expect("Failed to open file");
-        let mut buff = Vec::new();
-        file.read_to_end(&mut buff).expect("failed to read");
-        if buff.is_empty() {
-            panic!("File is empty")
+        self.ensure_file_exists()?;
+
+        let binary_data =
+            serialize(&data).map_err(|e| format!("Failed to serialize data: {}", e))?;
+
+        fs::write(&self.path, binary_data).map_err(|e| format!("Failed to write file: {}", e))?;
+        Ok(())
+    }
+
+    fn read<U>(&self) -> Result<Collection<U>, String>
+    where
+        U: Serialize + for<'a> Deserialize<'a>,
+    {
+        self.ensure_file_exists()?;
+
+        let mut file = File::open(&self.path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+
+        if buffer.is_empty() {
+            return Err("File is empty".to_string());
         }
-        deserialize(&buff).expect("failed to deserialize")
+
+        let collection: Collection<U> =
+            deserialize(&buffer).map_err(|e| format!("Failed to deserialize data: {}", e))?;
+
+        Ok(collection)
     }
 }
 
@@ -74,23 +89,40 @@ impl JsonStore {
             path: path.to_string(),
         }
     }
+
+    fn ensure_file_exists(&self) -> Result<(), String> {
+        let path = Path::new(&self.path);
+        if !path.exists() {
+            File::create(&self.path).map_err(|e| format!("Failed to create file: {}", e))?;
+        }
+        Ok(())
+    }
 }
 
 impl<T> Store<T> for JsonStore
 where
     T: Serialize + for<'a> Deserialize<'a>,
 {
-    fn save(&self, data: Collection<T>) {
-        let json = serde_json::to_string(&data).expect("failed to serialize");
-        std::fs::write(self.path.clone(), json).expect("failed to write");
-    }
-
-    fn load<U>(&self) -> Collection<U>
+    fn write<U>(&self, data: Collection<U>) -> Result<(), String>
     where
         U: Serialize + for<'a> Deserialize<'a>,
     {
-        let json = std::fs::read_to_string(self.path.clone()).expect("failed to read");
+        self.ensure_file_exists()?;
+        let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
 
-        serde_json::from_str(&json).expect("failed to deserialize")
+        fs::write(self.path.clone(), json).map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    fn read<U>(&self) -> Result<Collection<U>, String>
+    where
+        U: Serialize + for<'a> Deserialize<'a>,
+    {
+        let json = std::fs::read_to_string(self.path.clone()).map_err(|e| e.to_string())?;
+
+        let collection = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+
+        Ok(collection)
     }
 }
