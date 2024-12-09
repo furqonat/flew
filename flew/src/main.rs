@@ -33,20 +33,26 @@ fn main() {
         body: "This is an updated test post.".to_string(),
     };
     let update_post_node = DataNode::new(Entity::Post(update_post));
-    // let x = db
-    //     .node("posts")
-    //     .delete("64a23758-a52f-40d3-b881-9094f597a686");
+    let _ = db
+        .node("posts")
+        .update("ba2e5ac8-ce9a-4e21-84f8-2a6c6e64d602", update_post_node);
 
-    let mut m: Collection<Entity, JsonStore> = db.node("posts");
-
-    let x = m.get("64a23758-a52f-40d3-b881-9094f597a686");
-    println!("{:?}", x);
+    // get a node data by id
+    let m: Collection<Entity, JsonStore> = db.node("posts");
+    let x = m.get("10ae169e-2ccf-4ad1-bf54-e2bc68911b78");
+    println!("data is {:?}", x);
 
     let user = User {
         name: "John Doe".to_string(),
         age: 30,
     };
     let user_node = DataNode::new(Entity::User(user));
-    db.node("users").add(user_node);
-    db.node("posts").add(post_node);
+
+    // create a node and add some data
+    let _ = db.node("users").add(user_node);
+    let _ = db.node("posts").add(post_node);
+
+    // delete a node
+    let mut j: Collection<Entity, JsonStore> = db.node("posts");
+    let _ = j.delete("64a23758-a52f-40d3-b881-9094f597a686");
 }

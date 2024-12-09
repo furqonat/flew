@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
+    io::{Error, ErrorKind},
     sync::{Arc, RwLock},
 };
 
@@ -27,29 +28,29 @@ where
     N: Clone + Serialize + for<'de> Deserialize<'de> + Debug,
     T: Store<T> + Default,
 {
-    fn add(&mut self, data: DataNode<N>) -> String {
+    fn add(&mut self, data: DataNode<N>) -> Result<String, Error> {
         if let Some(node) = self.node.as_ref() {
             match self.nodes.get_mut(node) {
                 Some(vector) => {
                     vector.insert(data.clone());
                     self.sync();
-                    data.id
+                    Ok(data.id)
                 }
                 None => {
                     self.nodes.insert(node.clone(), Vector::new());
                     self.nodes.get_mut(node).unwrap().insert(data.clone());
                     self.sync();
-                    data.id
+                    Ok(data.id)
                 }
             }
         } else {
-            panic!("No node selected");
+            Err(Error::new(ErrorKind::Other, "No node selected"))
         }
     }
 
-    fn get(&mut self, id: &str) -> Option<&mut DataNode<N>> {
+    fn get(&self, id: &str) -> Option<&DataNode<N>> {
         if let Some(node) = self.node.as_ref() {
-            if let Some(vector) = self.nodes.get_mut(node) {
+            if let Some(vector) = self.nodes.get(node) {
                 return vector.get(id);
             }
             return None;
@@ -57,31 +58,29 @@ where
         None
     }
 
-    fn delete(&mut self, id: &str) {
+    fn delete(&mut self, id: &str) -> Result<(), Error> {
         if let Some(node) = self.node.as_ref() {
             match self.nodes.get_mut(node) {
                 Some(vector) => {
-                    println!("Deleting {:?}", vector.get(id));
                     vector.delete(id);
+                    self.sync();
+                    Ok(())
                 }
-                None => {
-                    println!("Node {} not found", node);
-                }
+                None => Err(Error::new(ErrorKind::Other, "Node not found")),
             }
-            // self.sync();
         } else {
-            panic!("No node selected");
+            Err(Error::new(ErrorKind::Other, "No node selected"))
         }
     }
 
-    fn update(&mut self, id: &str, data: DataNode<N>) -> &mut Self {
+    fn update(&mut self, id: &str, data: DataNode<N>) -> Result<(), Error> {
         if let Some(node) = self.node.as_ref() {
             self.nodes.get_mut(node).unwrap().update(id, data);
             self.sync();
+            Ok(())
         } else {
-            panic!("No node selected");
+            Err(Error::new(ErrorKind::Other, "No node selected"))
         }
-        self
     }
 }
 

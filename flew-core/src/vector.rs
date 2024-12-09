@@ -44,8 +44,12 @@ impl<T: Clone> Vector<T> {
         self.inner.push(value);
     }
 
-    pub fn get(&mut self, id: &str) -> Option<&mut DataNode<T>> {
+    pub fn get_mut(&mut self, id: &str) -> Option<&mut DataNode<T>> {
         self.inner.iter_mut().find(|n| n.id == id)
+    }
+
+    pub fn get(&self, id: &str) -> Option<&DataNode<T>> {
+        self.inner.iter().find(|n| n.id == id)
     }
 
     pub fn delete(&mut self, id: &str) {
@@ -53,6 +57,6 @@ impl<T: Clone> Vector<T> {
     }
 
     pub fn update(&mut self, id: &str, value: DataNode<T>) {
-        self.get(id).map(|n| *n = value);
+        self.get_mut(id).map(|n| *n = value);
     }
 }

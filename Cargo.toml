@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = ["flew", "flew-auth", "flew-core", "flew-macros"]
+members = ["flew", "flew-core", "flew-macros"]
