@@ -1,1 +1,4 @@
-pub trait Config {}
+pub enum PersistentType {
+    Json,
+    Binary,
+}

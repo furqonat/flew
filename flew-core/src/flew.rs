@@ -4,16 +4,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{graph::Collection, store::Store};
 
-pub trait Flew {
-    fn collection<U>(&self) -> Collection<U>
+pub trait Flew<T: Store<T>> {
+    fn node<U>(&self, node_name: &str) -> Collection<U, T>
     where
-        U: for<'de> Deserialize<'de> + Serialize;
-    fn sync<U>(&self, collection: Collection<U>)
-    where
-        U: for<'de> Deserialize<'de> + Serialize;
+        U: Clone + for<'de> Deserialize<'de> + Serialize;
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct EmbeddedFlew<T> {
     store: Arc<RwLock<T>>,
 }
@@ -29,30 +26,24 @@ where
     }
 }
 
-impl<T> Flew for EmbeddedFlew<T>
+impl<T> Flew<T> for EmbeddedFlew<T>
 where
-    T: Store<T>,
+    T: Store<T> + Default,
 {
-    fn collection<U>(&self) -> Collection<U>
+    fn node<U>(&self, node_name: &str) -> Collection<U, T>
     where
-        U: for<'de> Deserialize<'de> + Serialize,
+        U: Clone + for<'de> Deserialize<'de> + Serialize,
     {
-        let node = self.store.read().unwrap().read();
-        match node {
-            Ok(node) => Collection::from(node.nodes, node.edges),
-            Err(_e) => Collection::new(),
-        }
-    }
-
-    fn sync<U>(&self, collection: Collection<U>)
-    where
-        U: for<'de> Deserialize<'de> + Serialize,
-    {
-        let store = self.store.write().unwrap();
-        let result = store.write(collection);
-        match result {
-            Ok(_) => {}
-            Err(e) => println!("Failed to write to store: {}", e),
+        let store_read = self.store.read().unwrap();
+        if let Ok(node) = store_read.read::<Collection<U, T>>() {
+            Collection::from(
+                node.nodes,
+                node.edges,
+                Some(node_name.to_string()),
+                Some(self.store.clone()),
+            )
+        } else {
+            Collection::new(Some(node_name.to_string()), Some(self.store.clone()))
         }
     }
 }

@@ -1,78 +1,147 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    sync::{Arc, RwLock},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::node::DataNode;
+use crate::{
+    node::{DataNode, Node},
+    store::Store,
+    vector::Vector,
+};
 
-pub trait Graph<T> {
-    fn add_node(&mut self, node_name: String) -> String;
-    fn remove_node(&mut self, node_name: &str);
-    fn get_node(&self, node_name: &str) -> Option<&Vec<DataNode<T>>>;
-    fn get_node_mut(&mut self, node_name: &str) -> Option<&mut Vec<DataNode<T>>>;
-    fn add_edge(&mut self, source: &str, target: &str);
-    fn remove_edge(&mut self, source: &str, target: &str);
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Collection<T> {
-    pub nodes: HashMap<String, Vec<DataNode<T>>>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Collection<N: Clone, T> {
+    pub nodes: HashMap<String, Vector<N>>,
     pub edges: HashMap<String, HashSet<String>>,
+    #[serde(skip_serializing, skip_deserializing)]
+    node: Option<String>,
+    #[serde(skip_serializing, skip_deserializing)]
+    db: Option<Arc<RwLock<T>>>,
 }
 
-impl<T> Collection<T> {
-    pub fn new() -> Self {
+impl<N, T> Node<N> for Collection<N, T>
+where
+    N: Clone + Serialize + for<'de> Deserialize<'de> + Debug,
+    T: Store<T> + Default,
+{
+    fn add(&mut self, data: DataNode<N>) -> String {
+        if let Some(node) = self.node.as_ref() {
+            match self.nodes.get_mut(node) {
+                Some(vector) => {
+                    vector.insert(data.clone());
+                    self.sync();
+                    data.id
+                }
+                None => {
+                    self.nodes.insert(node.clone(), Vector::new());
+                    self.nodes.get_mut(node).unwrap().insert(data.clone());
+                    self.sync();
+                    data.id
+                }
+            }
+        } else {
+            panic!("No node selected");
+        }
+    }
+
+    fn get(&mut self, id: &str) -> Option<&mut DataNode<N>> {
+        if let Some(node) = self.node.as_ref() {
+            if let Some(vector) = self.nodes.get_mut(node) {
+                return vector.get(id);
+            }
+            return None;
+        }
+        None
+    }
+
+    fn delete(&mut self, id: &str) {
+        if let Some(node) = self.node.as_ref() {
+            match self.nodes.get_mut(node) {
+                Some(vector) => {
+                    println!("Deleting {:?}", vector.get(id));
+                    vector.delete(id);
+                }
+                None => {
+                    println!("Node {} not found", node);
+                }
+            }
+            // self.sync();
+        } else {
+            panic!("No node selected");
+        }
+    }
+
+    fn update(&mut self, id: &str, data: DataNode<N>) -> &mut Self {
+        if let Some(node) = self.node.as_ref() {
+            self.nodes.get_mut(node).unwrap().update(id, data);
+            self.sync();
+        } else {
+            panic!("No node selected");
+        }
+        self
+    }
+}
+
+impl<N, T> Collection<N, T>
+where
+    N: Clone + Serialize + for<'de> Deserialize<'de>,
+    T: Store<T> + Default,
+{
+    pub(crate) fn new(node_name: Option<String>, db: Option<Arc<RwLock<T>>>) -> Self {
         Collection {
             nodes: HashMap::new(),
             edges: HashMap::new(),
+            node: node_name,
+            db,
         }
     }
 
     pub fn from(
-        nodes: HashMap<String, Vec<DataNode<T>>>,
+        nodes: HashMap<String, Vector<N>>,
         edges: HashMap<String, HashSet<String>>,
+        node_name: Option<String>,
+        db: Option<Arc<RwLock<T>>>,
     ) -> Self {
-        Collection { nodes, edges }
+        Collection {
+            nodes,
+            edges,
+            node: node_name,
+            db,
+        }
+    }
+
+    pub fn as_mut(&mut self) -> &mut Self {
+        self
+    }
+
+    fn sync(&self) {
+        if let Some(db) = self.db.as_ref() {
+            let store: std::sync::RwLockWriteGuard<'_, T> = db.write().unwrap();
+            let col = Collection::from(
+                self.nodes.clone(),
+                self.edges.clone(),
+                self.node.clone(),
+                self.db.clone(),
+            );
+            let result = store.write::<Collection<N, T>>(col);
+            match result {
+                Ok(_) => {}
+                Err(e) => println!("Failed to write to store: {}", e),
+            }
+        }
     }
 }
 
-impl<T> Graph<T> for Collection<T>
-where
-    T: Clone + for<'de> Deserialize<'de> + Serialize,
-{
-    fn add_node(&mut self, node_name: String) -> String {
-        self.nodes.entry(node_name.clone()).or_insert_with(Vec::new);
-        node_name
-    }
-
-    fn remove_node(&mut self, node_name: &str) {
-        self.nodes.remove(node_name);
-        self.edges.remove(node_name);
-
-        for (_, targets) in self.edges.iter_mut() {
-            targets.remove(node_name);
+impl<N: Clone, T> Default for Collection<N, T> {
+    fn default() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            edges: Default::default(),
+            node: Default::default(),
+            db: Default::default(),
         }
-    }
-
-    fn add_edge(&mut self, source: &str, target: &str) {
-        if self.nodes.contains_key(source) && self.nodes.contains_key(target) {
-            self.edges
-                .entry(source.to_string())
-                .or_insert_with(HashSet::new)
-                .insert(target.to_string());
-        }
-    }
-
-    fn remove_edge(&mut self, source: &str, target: &str) {
-        if let Some(targets) = self.edges.get_mut(source) {
-            targets.remove(target);
-        }
-    }
-
-    fn get_node(&self, node_name: &str) -> Option<&Vec<DataNode<T>>> {
-        self.nodes.get(node_name)
-    }
-
-    fn get_node_mut(&mut self, node_name: &str) -> Option<&mut Vec<DataNode<T>>> {
-        self.nodes.get_mut(node_name)
     }
 }

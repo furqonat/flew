@@ -1,18 +1,21 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub trait Node<T> {
-    fn insert(&mut self, data: T);
-    fn remove(&mut self, id: &str);
-    fn get(&self, id: &str) -> Option<T>;
-    fn get_mut(&mut self, id: &str) -> Option<&mut T>;
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool;
-    fn clear(&mut self);
+pub trait Node<T>
+where
+    T: Clone + for<'de> Deserialize<'de> + Serialize,
+{
+    fn add(&mut self, node_name: DataNode<T>) -> String;
+    fn get(&mut self, id: &str) -> Option<&mut DataNode<T>>;
+    fn delete(&mut self, id: &str);
+    fn update(&mut self, id: &str, data: DataNode<T>) -> &mut Self;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DataNode<T> {
+pub struct DataNode<T>
+where
+    T: Clone,
+{
     pub id: String,
     pub data: T,
 }

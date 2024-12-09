@@ -7,18 +7,15 @@ use std::{
 use bincode::{deserialize, serialize};
 use serde::{Deserialize, Serialize};
 
-use crate::graph::Collection;
-
 pub trait Store<T> {
-    fn write<U>(&self, data: Collection<U>) -> Result<(), String>
+    fn write<U>(&self, data: U) -> Result<(), String>
     where
         U: Serialize + for<'a> Deserialize<'a>;
-    fn read<U>(&self) -> Result<Collection<U>, String>
+    fn read<U>(&self) -> Result<U, String>
     where
         U: Serialize + for<'a> Deserialize<'a>;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BinaryStore {
     path: String,
 }
@@ -43,7 +40,7 @@ impl<T> Store<T> for BinaryStore
 where
     T: Serialize + for<'a> Deserialize<'a>,
 {
-    fn write<U>(&self, data: Collection<U>) -> Result<(), String>
+    fn write<U>(&self, data: U) -> Result<(), String>
     where
         U: Serialize + for<'a> Deserialize<'a>,
     {
@@ -56,7 +53,7 @@ where
         Ok(())
     }
 
-    fn read<U>(&self) -> Result<Collection<U>, String>
+    fn read<U>(&self) -> Result<U, String>
     where
         U: Serialize + for<'a> Deserialize<'a>,
     {
@@ -71,14 +68,14 @@ where
             return Err("File is empty".to_string());
         }
 
-        let collection: Collection<U> =
+        let collection =
             deserialize(&buffer).map_err(|e| format!("Failed to deserialize data: {}", e))?;
 
         Ok(collection)
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct JsonStore {
     path: String,
 }
@@ -99,23 +96,20 @@ impl JsonStore {
     }
 }
 
-impl<T> Store<T> for JsonStore
-where
-    T: Serialize + for<'a> Deserialize<'a>,
-{
-    fn write<U>(&self, data: Collection<U>) -> Result<(), String>
+impl Store<JsonStore> for JsonStore {
+    fn write<U>(&self, data: U) -> Result<(), String>
     where
         U: Serialize + for<'a> Deserialize<'a>,
     {
         self.ensure_file_exists()?;
         let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
 
-        fs::write(self.path.clone(), json).map_err(|e| e.to_string())?;
+        fs::write(self.path.to_string(), json).map_err(|e| e.to_string())?;
 
         Ok(())
     }
 
-    fn read<U>(&self) -> Result<Collection<U>, String>
+    fn read<U>(&self) -> Result<U, String>
     where
         U: Serialize + for<'a> Deserialize<'a>,
     {
@@ -124,5 +118,13 @@ where
         let collection = serde_json::from_str(&json).map_err(|e| e.to_string())?;
 
         Ok(collection)
+    }
+}
+
+impl Default for JsonStore {
+    fn default() -> Self {
+        JsonStore {
+            path: "data.json".to_string(),
+        }
     }
 }
